@@ -23,6 +23,7 @@ const PORT = Number(process.env.PORT) || 4000;
 const DATA_DIR = path.join(__dirname, 'data');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const RECORDINGS_DIR = path.join(DATA_DIR, 'recordings');
+const DROPZONE_DIR = path.join(DATA_DIR, 'recordings_dropzone');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const LEADS_FILE = path.join(DATA_DIR, 'leads.json');
 const SALES_TEAM_FILE = path.join(DATA_DIR, 'sales_team.json');
@@ -33,6 +34,7 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
 if (!fs.existsSync(RECORDINGS_DIR)) fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
+if (!fs.existsSync(DROPZONE_DIR)) fs.mkdirSync(DROPZONE_DIR, { recursive: true });
 
 // =========================================================================
 // LOCAL CLOCK / IST TIME UTILITIES (Matches System Wall Clock Exactly)
@@ -626,6 +628,69 @@ async function parseRequestBody(req) {
   const raw = buf.toString('utf-8').trim();
   if (!raw) return {};
   return parseFlexiblePayload(raw);
+}
+
+function parseMultipartFormData(buffer, boundary) {
+  const fields = {};
+  let file = null;
+  if (!buffer || !boundary) return { fields, file };
+
+  const boundaryBuf = Buffer.from('--' + boundary);
+  let pos = 0;
+
+  while (pos < buffer.length) {
+    const bStart = buffer.indexOf(boundaryBuf, pos);
+    if (bStart === -1) break;
+
+    const contentStart = bStart + boundaryBuf.length;
+    if (buffer.length >= contentStart + 2 && buffer[contentStart] === 45 && buffer[contentStart + 1] === 45) {
+      break;
+    }
+
+    const nextBoundary = buffer.indexOf(boundaryBuf, contentStart);
+    if (nextBoundary === -1) break;
+
+    const part = buffer.slice(contentStart, nextBoundary);
+    pos = nextBoundary;
+
+    let sepIndex = part.indexOf('\r\n\r\n');
+    let sepLen = 4;
+    if (sepIndex === -1) {
+      sepIndex = part.indexOf('\n\n');
+      sepLen = 2;
+    }
+    if (sepIndex === -1) continue;
+
+    const headStr = part.slice(0, sepIndex).toString('utf8');
+    let body = part.slice(sepIndex + sepLen);
+
+    if (body.length >= 2 && body[body.length - 2] === 13 && body[body.length - 1] === 10) {
+      body = body.slice(0, body.length - 2);
+    } else if (body.length >= 1 && body[body.length - 1] === 10) {
+      body = body.slice(0, body.length - 1);
+    }
+
+    const nameMatch = headStr.match(/content-disposition:[^\r\n]*name=["']?([^"';\r\n]+)["']?/i);
+    if (!nameMatch) continue;
+    const fieldName = nameMatch[1].trim().toLowerCase();
+
+    const filenameMatch = headStr.match(/filename=["']?([^"';\r\n]+)["']?/i);
+    const typeMatch = headStr.match(/content-type:\s*([^\r\n;]+)/i);
+    const mimeType = typeMatch ? typeMatch[1].trim() : 'application/octet-stream';
+
+    if (filenameMatch) {
+      file = {
+        fieldName,
+        filename: path.basename(filenameMatch[1].trim()),
+        mimeType,
+        buffer: body
+      };
+    } else {
+      fields[fieldName] = body.toString('utf8').trim();
+    }
+  }
+
+  return { fields, file };
 }
 
 function sanitizeString(val, maxLen = 500) {
@@ -1460,6 +1525,69 @@ function syncCallEntryIntoLead(callLog) {
   saveLeads(leads);
 }
 
+function attachRecordingToCallOrLead({ recruiter, phone, filename, recordingMeta, transcript, notes }) {
+  const logs = getCallLogs();
+  let targetCall = null;
+  const pKey = phone ? phoneKey10(phone) : '';
+
+  if (pKey) {
+    targetCall = logs.find(c => phoneKey10(c.candidatePhone) === pKey);
+  }
+  if (!targetCall && !pKey && recruiter) {
+    const cRec = canonicalSalesName(recruiter);
+    targetCall = logs.find(c => salesPersonMatches(c.recruiterName, cRec));
+  }
+  if (!targetCall && !pKey && !recruiter && logs.length > 0) {
+    targetCall = logs[0];
+  }
+
+  const recName = recruiter || (targetCall ? targetCall.recruiterName : 'Jinendra');
+  const durSec = targetCall ? (targetCall.durationSeconds || 0) : 0;
+  const durStr = targetCall ? (targetCall.durationFormatted || `${durSec}s`) : '0s';
+
+  const autoTranscript = transcript || (targetCall && targetCall.callTranscript) || 
+    `📞 [Auto-Recorded Call] Duration: ${durStr}. Call audio synced automatically from ${recName}'s phone. Audio file: ${filename || (recordingMeta && recordingMeta.recordingFile) || 'call_recording'}. Ready to play.`;
+
+  if (!targetCall) {
+    const created = processCallLog({
+      recruiter_name: recName,
+      candidate_phone: phone || '0000000000',
+      candidate_name: 'Recorded Call Client',
+      call_direction: 'outgoing',
+      call_duration_seconds: durSec,
+      recordingUrl: recordingMeta ? recordingMeta.recordingUrl : '',
+      recordingFile: recordingMeta ? recordingMeta.recordingFile : '',
+      recordingMime: recordingMeta ? recordingMeta.recordingMime : '',
+      call_transcript: autoTranscript,
+      notes: notes || 'Automatically captured call recording'
+    });
+    return { status: 'created', callLog: created.callLog || created };
+  }
+
+  if (recordingMeta) {
+    targetCall.recordingUrl = recordingMeta.recordingUrl;
+    targetCall.recordingFile = recordingMeta.recordingFile;
+    targetCall.recordingMime = recordingMeta.recordingMime;
+  }
+  if (!targetCall.callTranscript || targetCall.callTranscript.trim() === '') {
+    targetCall.callTranscript = autoTranscript;
+  }
+  if (notes && (!targetCall.notes || targetCall.notes.trim() === '')) {
+    targetCall.notes = notes;
+  }
+
+  saveCallLogs(logs);
+  syncCallEntryIntoLead(targetCall);
+  broadcastEvent('call_updated', {
+    callId: targetCall.id,
+    recordingUrl: targetCall.recordingUrl,
+    callTranscript: targetCall.callTranscript,
+    callLog: targetCall
+  });
+
+  return { status: 'success', callLog: targetCall };
+}
+
 // =========================================================================
 // LIVE REAL-TIME CALL STOPWATCH ENGINE
 // (Ringing / Dialing -> Talking Timer + Live Transcript -> Call Cut / Ended)
@@ -2130,6 +2258,9 @@ const server = http.createServer(async (req, res) => {
 
       const enriched = filtered.map(c => ({
         ...c,
+        clientName: c.clientName || c.candidateName || 'Client',
+        clientPhone: c.clientPhone || c.candidatePhone || '',
+        salespersonName: c.salespersonName || c.recruiterName || 'Jinendra',
         dateKey: c.dateKey || getLocalDateKey(c.callStartTime || c.loggedAt),
         callStartDisplay: c.callStartDisplay || formatDisplayDateTime(c.callStartTime),
         callEndDisplay: c.callEndDisplay || (c.callEndTime && c.callEndTime !== '-' ? formatDisplayDateTime(c.callEndTime) : '-')
@@ -2257,11 +2388,39 @@ const server = http.createServer(async (req, res) => {
       let notes = sanitizeString(parsedUrl.query.notes || '', 2000);
       let recordingMeta = null;
 
-      if (contentType.includes('application/json') || contentType.includes('text/plain') || contentType.includes('application/x-www-form-urlencoded')) {
+      if (contentType.includes('multipart/form-data')) {
+        const boundaryMatch = req.headers['content-type'].match(/boundary=([^;]+)/i);
+        const boundary = boundaryMatch ? boundaryMatch[1].trim() : '';
+        const rawBuf = await parseRequestBodyBuffer(req);
+        const { fields, file } = parseMultipartFormData(rawBuf, boundary);
+
+        callId = callId || sanitizeString(fields.callid || fields.call_id || '', 40);
+        recruiter = recruiter || sanitizeString(fields.recruiter || fields.recruiter_name || fields.sales_person || fields.salesperson || '', 100);
+        phone = phone || sanitizePhone(fields.phone || fields.candidate_phone || fields.client_phone || fields.number || '');
+        transcript = transcript || sanitizeString(fields.call_transcript || fields.transcript || fields.spoken_text || fields.notes || '', 15000);
+        notes = notes || sanitizeString(fields.notes || fields.summary || '', 2000);
+
+        if (file && file.buffer && file.buffer.length > 50) {
+          const originalName = file.filename || 'recording.m4a';
+          const ext = path.extname(originalName).toLowerCase().replace('.', '') || 'm4a';
+          const filename = `REC_${callId || 'AUTO'}_${Date.now()}_${path.basename(originalName).replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+          fs.writeFileSync(path.join(RECORDINGS_DIR, filename), file.buffer);
+          recordingMeta = {
+            recordingFile: filename,
+            recordingUrl: `/api/recordings/${filename}`,
+            recordingMime: file.mimeType || `audio/${ext}`,
+            recordingSize: file.buffer.length
+          };
+          if (!phone) {
+            const pMatch = originalName.match(/(?:\b|[^0-9])([6-9]\d{9})(?:\b|[^0-9])/);
+            if (pMatch) phone = pMatch[1];
+          }
+        }
+      } else if (contentType.includes('application/json') || contentType.includes('text/plain') || contentType.includes('application/x-www-form-urlencoded')) {
         const body = await parseRequestBody(req);
         callId = callId || sanitizeString(body.callId || body.call_id || '', 40);
-        recruiter = recruiter || sanitizeString(body.recruiter || body.recruiter_name || body.sales_person || '', 100);
-        phone = phone || sanitizePhone(body.phone || body.candidate_phone || '');
+        recruiter = recruiter || sanitizeString(body.recruiter || body.recruiter_name || body.sales_person || body.salesperson || '', 100);
+        phone = phone || sanitizePhone(body.phone || body.candidate_phone || body.client_phone || body.number || '');
         transcript = transcript || sanitizeString(body.call_transcript || body.transcript || body.spoken_text || '', 15000);
         notes = notes || sanitizeString(body.notes || '', 2000);
         const b64 = body.audio_base64 || body.recording_base64 || body.audioData || '';
@@ -2269,16 +2428,27 @@ const server = http.createServer(async (req, res) => {
           recordingMeta = saveBase64AudioRecording(b64, callId || 'CALL-REC', body.audio_mime || '');
         }
       } else {
-        // Raw binary audio upload directly from Android / MacroDroid HTTP POST
+        // Raw binary audio upload directly from Android / MacroDroid HTTP POST / curl
         const rawBuf = await parseRequestBodyBuffer(req);
-        if (rawBuf && rawBuf.length > 100) {
-          let ext = sanitizeString(parsedUrl.query.ext || 'm4a', 10).replace(/[^a-z0-9]/gi, '') || 'm4a';
-          if (contentType.includes('mp3') || contentType.includes('mpeg')) ext = 'mp3';
-          else if (contentType.includes('wav')) ext = 'wav';
-          else if (contentType.includes('webm')) ext = 'webm';
-          else if (contentType.includes('ogg')) ext = 'ogg';
-          else if (contentType.includes('amr')) ext = 'amr';
-          const filename = `${callId || 'CALL-BIN'}_${Date.now()}.${ext}`;
+        if (rawBuf && rawBuf.length > 50) {
+          let origHeaderName = req.headers['x-filename'] || '';
+          const disp = req.headers['content-disposition'] || '';
+          const fnMatch = disp.match(/filename=["']?([^"';\r\n]+)["']?/i);
+          if (fnMatch) origHeaderName = fnMatch[1];
+
+          let ext = sanitizeString(parsedUrl.query.ext || '', 10).replace(/[^a-z0-9]/gi, '');
+          if (!ext && origHeaderName) ext = path.extname(origHeaderName).replace('.', '');
+          if (!ext) {
+            if (contentType.includes('mp3') || contentType.includes('mpeg')) ext = 'mp3';
+            else if (contentType.includes('wav')) ext = 'wav';
+            else if (contentType.includes('webm')) ext = 'webm';
+            else if (contentType.includes('ogg')) ext = 'ogg';
+            else if (contentType.includes('amr')) ext = 'amr';
+            else if (contentType.includes('aac')) ext = 'aac';
+            else ext = 'm4a';
+          }
+          const safeHeaderName = origHeaderName ? path.basename(origHeaderName).replace(/[^a-zA-Z0-9._-]/g, '_') : `${callId || 'BIN'}_${Date.now()}.${ext}`;
+          const filename = `REC_${Date.now()}_${safeHeaderName}`;
           fs.writeFileSync(path.join(RECORDINGS_DIR, filename), rawBuf);
           recordingMeta = {
             recordingFile: filename,
@@ -2286,67 +2456,33 @@ const server = http.createServer(async (req, res) => {
             recordingMime: contentType || `audio/${ext}`,
             recordingSize: rawBuf.length
           };
+          if (!phone && origHeaderName) {
+            const pMatch = origHeaderName.match(/(?:\b|[^0-9])([6-9]\d{9})(?:\b|[^0-9])/);
+            if (pMatch) phone = pMatch[1];
+          }
+          if (!recruiter && origHeaderName) {
+            for (const name of ['Jinendra', 'Vishal', 'Rahul', 'Archana']) {
+              if (new RegExp(name, 'i').test(origHeaderName)) {
+                recruiter = name;
+                break;
+              }
+            }
+          }
         }
       }
 
-      const logs = getCallLogs();
-      let targetCall = null;
-      if (callId) {
-        targetCall = logs.find(c => c.id === callId);
-      }
-      if (!targetCall && phone) {
-        const pKey = phoneKey10(phone);
-        targetCall = logs.find(c => phoneKey10(c.candidatePhone) === pKey);
-      }
-      if (!targetCall && recruiter) {
-        const cRec = canonicalSalesName(recruiter);
-        targetCall = logs.find(c => salesPersonMatches(c.recruiterName, cRec));
-      }
-      if (!targetCall && logs.length > 0) {
-        targetCall = logs[0];
-      }
-
-      if (!targetCall) {
-        // Create a new call log entry holding this recording & transcript
-        const created = processCallLog({
-          recruiter_name: recruiter || 'Jinendra',
-          candidate_phone: phone || '0000000000',
-          candidate_name: parsedUrl.query.name || 'Recorded Call Client',
-          call_direction: 'outgoing',
-          call_duration_seconds: Number(parsedUrl.query.duration || 0),
-          recordingUrl: recordingMeta ? recordingMeta.recordingUrl : '',
-          recordingFile: recordingMeta ? recordingMeta.recordingFile : '',
-          recordingMime: recordingMeta ? recordingMeta.recordingMime : '',
-          call_transcript: transcript,
-          notes
-        });
-        res.writeHead(201, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(created));
-        return;
-      }
-
-      if (recordingMeta) {
-        targetCall.recordingUrl = recordingMeta.recordingUrl;
-        targetCall.recordingFile = recordingMeta.recordingFile;
-        targetCall.recordingMime = recordingMeta.recordingMime;
-      }
-      if (transcript) {
-        targetCall.callTranscript = transcript;
-      }
-      if (notes) {
-        targetCall.notes = notes;
-      }
-
-      saveCallLogs(logs);
-      syncCallEntryIntoLead(targetCall);
-      broadcastEvent('call_updated', {
-        callId: targetCall.id,
-        recordingUrl: targetCall.recordingUrl,
-        callTranscript: targetCall.callTranscript
+      const result = attachRecordingToCallOrLead({
+        recruiter,
+        phone,
+        filename: recordingMeta ? recordingMeta.recordingFile : '',
+        recordingMeta,
+        transcript,
+        notes
       });
 
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'success', callLog: targetCall }));
+      const statusCode = result.status === 'created' ? 201 : 200;
+      res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
       return;
     }
 
@@ -2498,6 +2634,113 @@ function saveCloudCursor(id, time) {
   writeJsonFile(CLOUD_CURSOR_FILE, { lastId: id, lastTime: time || Math.floor(Date.now() / 1000) });
 }
 
+function handleCloudAttachment(obj) {
+  try {
+    if (!obj.attachment || !obj.attachment.url) return;
+    const attachUrl = obj.attachment.url;
+    const originalName = obj.attachment.name || 'call_recording.m4a';
+    const mime = obj.attachment.type || 'audio/m4a';
+
+    const rawText = `${originalName} ${obj.message || ''} ${obj.title || ''}`;
+    let phone = '';
+    const pMatch = rawText.match(/(?:\b|[^0-9])([6-9]\d{9})(?:\b|[^0-9])/);
+    if (pMatch) phone = pMatch[1];
+
+    let recruiter = 'Jinendra';
+    for (const name of ['Jinendra', 'Vishal', 'Rahul', 'Archana']) {
+      if (new RegExp(name, 'i').test(rawText)) {
+        recruiter = name;
+        break;
+      }
+    }
+
+    const extMatch = originalName.match(/\.([a-z0-9]+)$/i);
+    const ext = extMatch ? extMatch[1].toLowerCase() : 'm4a';
+    const filename = `REC_CLOUD_${Date.now()}_${path.basename(originalName).replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const targetPath = path.join(RECORDINGS_DIR, filename);
+
+    const clientLib = attachUrl.startsWith('https:') ? https : http;
+    clientLib.get(attachUrl, res => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        return;
+      }
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => {
+        const buf = Buffer.concat(chunks);
+        if (buf.length < 50) return;
+        fs.writeFileSync(targetPath, buf);
+
+        const recordingMeta = {
+          recordingFile: filename,
+          recordingUrl: `/api/recordings/${filename}`,
+          recordingMime: mime,
+          recordingSize: buf.length
+        };
+
+        attachRecordingToCallOrLead({
+          recruiter,
+          phone,
+          filename,
+          recordingMeta,
+          notes: obj.message || 'Auto-uploaded via Cloud Relay'
+        });
+      });
+    }).on('error', () => {});
+  } catch (_) {}
+}
+
+function scanRecordingsDropzone() {
+  try {
+    if (!fs.existsSync(DROPZONE_DIR)) return;
+    const files = fs.readdirSync(DROPZONE_DIR);
+    for (const f of files) {
+      if (f.startsWith('.') || f.endsWith('.tmp')) continue;
+      const srcPath = path.join(DROPZONE_DIR, f);
+      const stat = fs.statSync(srcPath);
+      if (!stat.isFile()) continue;
+
+      if (Date.now() - stat.mtimeMs < 2000) continue;
+
+      const ext = path.extname(f).toLowerCase().replace('.', '');
+      if (!['m4a', 'mp3', 'wav', 'aac', 'amr', 'ogg', 'webm', 'mp4', '3gp'].includes(ext)) continue;
+
+      let phone = '';
+      const pMatch = f.match(/(?:\b|[^0-9])([6-9]\d{9})(?:\b|[^0-9])/);
+      if (pMatch) phone = pMatch[1];
+
+      let recruiter = '';
+      for (const name of ['Jinendra', 'Vishal', 'Rahul', 'Archana']) {
+        if (new RegExp(name, 'i').test(f)) {
+          recruiter = name;
+          break;
+        }
+      }
+
+      const destFilename = `REC_AUTO_${Date.now()}_${path.basename(f).replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const destPath = path.join(RECORDINGS_DIR, destFilename);
+      fs.renameSync(srcPath, destPath);
+
+      const recordingMeta = {
+        recordingFile: destFilename,
+        recordingUrl: `/api/recordings/${destFilename}`,
+        recordingMime: `audio/${ext}`,
+        recordingSize: stat.size
+      };
+
+      attachRecordingToCallOrLead({
+        recruiter,
+        phone,
+        filename: destFilename,
+        recordingMeta,
+        notes: `Imported automatically from dropzone (${f})`
+      });
+    }
+  } catch (_) {}
+}
+setInterval(scanRecordingsDropzone, 4000);
+
 let cloudRelayConnecting = false;
 function connectCloudCallRelay() {
   if (cloudRelayConnecting) return;
@@ -2527,7 +2770,7 @@ function connectCloudCallRelay() {
         if (!line) continue;
         try {
           const obj = JSON.parse(line);
-          if (obj.event === 'message' && obj.message && obj.id) {
+          if (obj.event === 'message' && obj.id) {
             if (processedCloudIds.has(obj.id)) continue;
             processedCloudIds.add(obj.id);
             if (processedCloudIds.size > 500) {
@@ -2536,11 +2779,17 @@ function connectCloudCallRelay() {
             }
             saveCloudCursor(obj.id, obj.time);
 
-            const parsed = parseFlexiblePayload(obj.message);
-            if (parsed && (parsed.event || parsed.phone || parsed.candidate_phone || parsed.client_phone)) {
-              const msgMs = obj.time ? obj.time * 1000 : Date.now();
-              const effectiveMs = Math.abs(Date.now() - msgMs) < 2000 ? Date.now() : msgMs;
-              processLiveCallEvent(parsed, effectiveMs);
+            if (obj.attachment && obj.attachment.url) {
+              handleCloudAttachment(obj);
+            }
+
+            if (obj.message) {
+              const parsed = parseFlexiblePayload(obj.message);
+              if (parsed && (parsed.event || parsed.phone || parsed.candidate_phone || parsed.client_phone)) {
+                const msgMs = obj.time ? obj.time * 1000 : Date.now();
+                const effectiveMs = Math.abs(Date.now() - msgMs) < 2000 ? Date.now() : msgMs;
+                processLiveCallEvent(parsed, effectiveMs);
+              }
             }
           }
         } catch (_) {}

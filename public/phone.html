@@ -400,6 +400,28 @@
           <button class="btn-copy" onclick="copyField('bodyEnd')"><i class="fa-regular fa-copy"></i> Copy</button>
         </div>
       </div>
+
+      <!-- 100% ZERO-TOUCH AUTOMATIC CALL RECORDING UPLOAD -->
+      <div class="endpoint-group" style="border:1px solid #10b981; background:rgba(16,185,129,0.06); padding:12px; border-radius:8px; margin-top:14px;">
+        <div class="endpoint-head">
+          <span style="color:#34d399; font-weight:700;"><i class="fa-solid fa-cloud-arrow-up"></i> 5. Zero-Touch Auto Call Recording Upload (Sales Team Does NOTHING!)</span>
+          <span class="trigger-tag" style="background:#10b981;">Automatic</span>
+        </div>
+        <p style="font-size:11.5px; color:#cbd5e1; margin:6px 0 8px 0; line-height:1.45;">
+          <strong>One-time 1-min setup:</strong> In Phone Dialer Settings, turn ON <em>"Record calls automatically"</em>.<br>
+          In MacroDroid, create Macro: Trigger <code>Call Ended</code> &bull; Action 1: <code>Wait 4s</code> &bull; Action 2: <code>HTTP Request</code> (Method: <strong>POST</strong>, Send File: Most recent file in <code>/Recordings/Call/</code>).
+        </p>
+        <label style="font-size:11px; color:#94a3b8;">Target Upload URL (Works anywhere on 4G/5G &amp; Wi-Fi):</label>
+        <div class="copy-field" style="margin-bottom:6px;">
+          <input type="text" class="mono-input" id="uploadAutoUrl" value="https://ntfy.sh/sales_crm_calls_9f8a7b6c5d4e" readonly>
+          <button class="btn-copy" onclick="copyField('uploadAutoUrl')"><i class="fa-regular fa-copy"></i> Copy</button>
+        </div>
+        <label style="font-size:11px; color:#94a3b8;">HTTP Request Header (Filename):</label>
+        <div class="copy-field">
+          <input type="text" class="mono-input" id="uploadAutoHeader" readonly>
+          <button class="btn-copy" onclick="copyField('uploadAutoHeader')"><i class="fa-regular fa-copy"></i> Copy</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -438,6 +460,8 @@
       document.getElementById('bodyDial').value = 'event=dialing&dir=outgoing&recruiter=' + rec + '&phone={call_number}&name={call_name}';
       document.getElementById('bodyStart').value = 'event=started&recruiter=' + rec + '&phone={call_number}&name={call_name}';
       document.getElementById('bodyEnd').value = 'event=ended&recruiter=' + rec + '&phone={call_number}&name={call_name}';
+      const hdr = document.getElementById('uploadAutoHeader');
+      if (hdr) hdr.value = 'Filename: ' + rec + '_{call_number}_{call_duration}.m4a';
     }
 
     function copyField(id) {

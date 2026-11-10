@@ -985,6 +985,30 @@
     .pill-outgoing { background: #eff6ff; color: #1d4ed8; }
     .pill-missed { background: #fef2f2; color: #dc2626; }
 
+    .btn-transcript-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 500;
+      color: #065f46;
+      cursor: pointer;
+      text-align: left;
+      max-width: 250px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: all 0.15s ease;
+    }
+    .btn-transcript-chip:hover {
+      background: rgba(16, 185, 129, 0.18);
+      border-color: #10b981;
+    }
+
     .cat-pill-change { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
     .cat-pill-seeker { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
     .cat-pill-client { background: #fdf4ff; color: #86198f; border: 1px solid #f5d0fe; }
@@ -1847,6 +1871,36 @@
           </section>
 
         </main>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== CALL RECORDING & TRANSCRIPT MODAL ==================== -->
+  <div class="drawer-backdrop" id="transcriptModal" style="display:none; justify-content:center; align-items:center;" onclick="if(event.target===this) closeCallTranscriptModal()">
+    <div style="background:var(--card-bg, #ffffff); border-radius:12px; width:90%; max-width:560px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.2); border:1px solid var(--border-color, #e2e8f0); overflow:hidden; display:flex; flex-direction:column; max-height:85vh;">
+      <div style="padding:16px 20px; border-bottom:1px solid var(--border-color, #e2e8f0); display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-size:16px; font-weight:700; color:var(--text-primary, #0f172a);" id="transcriptModalTitle">Call Recording &amp; Transcript</div>
+          <div style="font-size:12px; color:var(--text-muted, #64748b); margin-top:3px;" id="transcriptModalMeta"></div>
+        </div>
+        <button type="button" class="btn-icon-close" onclick="closeCallTranscriptModal()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div style="padding:20px; overflow-y:auto; flex:1;">
+        <div id="transcriptModalAudioBox" style="display:none;"></div>
+        
+        <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:#475569; margin-bottom:6px;">
+          <i class="fa-solid fa-comment-dots" style="color:#6366f1;"></i> Call Conversation ("Baat Kya Hui")
+        </div>
+        <div id="transcriptModalBody" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; font-size:13px; line-height:1.55; color:#334155; white-space:pre-wrap; margin-bottom:16px; max-height:220px; overflow-y:auto;"></div>
+
+        <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:#475569; margin-bottom:6px;">
+          <i class="fa-solid fa-pen-to-square" style="color:#0ea5e9;"></i> Sales Notes / Next Steps
+        </div>
+        <textarea id="transcriptModalNotes" rows="3" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:10px; font-size:12.5px; outline:none; resize:vertical; font-family:inherit;" placeholder="Add private notes on this call, agreement terms, follow-up dates..."></textarea>
+      </div>
+      <div style="padding:12px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" class="btn-ui btn-ui-secondary" onclick="closeCallTranscriptModal()">Close</button>
+        <button type="button" class="btn-ui btn-ui-primary" id="transcriptModalSaveBtn"><i class="fa-solid fa-check"></i> Save Notes</button>
       </div>
     </div>
   </div>
@@ -2904,28 +2958,56 @@
         let dirPill = '<span class="pill pill-outgoing"><i class="fa-solid fa-arrow-up-right" style="font-size:10px;"></i> Outgoing</span>';
         if (log.direction === 'incoming') dirPill = '<span class="pill pill-incoming"><i class="fa-solid fa-arrow-down-left" style="font-size:10px;"></i> Incoming</span>';
         else if (log.direction === 'missed') dirPill = '<span class="pill pill-missed"><i class="fa-solid fa-phone-slash" style="font-size:10px;"></i> Missed</span>';
+        else if (log.direction === 'unanswered') dirPill = '<span class="pill pill-missed" style="background:rgba(239,68,68,0.12); color:#ef4444;"><i class="fa-solid fa-phone-slash" style="font-size:10px;"></i> Client Not Picked</span>';
 
-        const waUrl = toWhatsAppLink(log.clientPhone);
-        const p10 = phoneDigits10(log.clientPhone);
+        const clientPhone = log.clientPhone || log.candidatePhone || '';
+        const clientName = log.clientName || log.candidateName || 'Client';
+        const salesPerson = log.salespersonName || log.recruiterName || 'Jinendra';
+        const waUrl = toWhatsAppLink(clientPhone);
+        const p10 = phoneDigits10(clientPhone);
         const linkedLead = allLeads.find(l => phoneDigits10(l.phone) === p10);
-        const phoneArg = escapeHtml(JSON.stringify(log.clientPhone || ''));
+        const phoneArg = escapeHtml(JSON.stringify(clientPhone || ''));
+
+        let recordingPlayerHtml = '';
+        if (log.recordingUrl) {
+          recordingPlayerHtml =
+            '<div style="margin-top:5px; display:flex; align-items:center; gap:6px;">' +
+              '<audio controls preload="none" style="height:26px; width:160px; outline:none;" src="' + escapeHtml(log.recordingUrl) + '"></audio>' +
+              '<a href="' + escapeHtml(log.recordingUrl) + '" download="' + escapeHtml(log.recordingFile || 'call_recording.m4a') + '" class="icon-action" title="Download Audio Recording"><i class="fa-solid fa-download"></i></a>' +
+            '</div>';
+        }
+
+        let transcriptHtml = '';
+        if (log.callTranscript) {
+          const shortText = log.callTranscript.length > 44 ? log.callTranscript.slice(0, 44) + '...' : log.callTranscript;
+          transcriptHtml =
+            '<div style="margin-top:4px;">' +
+              '<button type="button" class="btn-transcript-chip" onclick="openCallTranscriptModal(\'' + escapeHtml(log.id) + '\')" title="Click to view conversation details">' +
+                '<i class="fa-solid fa-file-waveform" style="color:#10b981;"></i> ' + escapeHtml(shortText) +
+              '</button>' +
+            '</div>';
+        }
 
         tr.innerHTML =
           '<td>' + dirPill + '</td>' +
-          '<td><strong>' + escapeHtml(log.clientName) + '</strong></td>' +
+          '<td>' +
+            '<div style="font-weight:600; color:var(--text-primary); font-size:13px;">' + escapeHtml(clientName) + '</div>' +
+            recordingPlayerHtml +
+            transcriptHtml +
+          '</td>' +
           '<td>' +
             '<div style="display:flex; align-items:center; gap:6px;">' +
-              '<span style="font-family:ui-monospace,monospace; font-size:12.5px; font-weight:600; color:var(--text-secondary);">' + escapeHtml(log.clientPhone) + '</span>' +
+              '<span style="font-family:ui-monospace,monospace; font-size:12.5px; font-weight:600; color:var(--text-secondary);">' + escapeHtml(clientPhone) + '</span>' +
               '<span class="action-icon-group">' +
                 (waUrl ? '<a href="' + waUrl + '" target="_blank" class="icon-action wa" title="Open WhatsApp"><i class="fa-brands fa-whatsapp"></i></a>' : '') +
                 '<button class="icon-action" onclick=\'copyText(' + phoneArg + ')\' title="Copy Number"><i class="fa-regular fa-copy"></i></button>' +
               '</span>' +
             '</div>' +
           '</td>' +
-          '<td><span style="font-weight:500; color:var(--text-secondary);">' + escapeHtml(log.salespersonName) + '</span></td>' +
+          '<td><span style="font-weight:500; color:var(--text-secondary);">' + escapeHtml(salesPerson) + '</span></td>' +
           '<td style="font-size:12px; color:var(--text-secondary); white-space:nowrap;">' + escapeHtml(formatLocalTimeDisplay(log.callStartTime)) + '</td>' +
           '<td style="font-size:12px; color:var(--text-secondary); white-space:nowrap;">' + escapeHtml(formatLocalTimeDisplay(log.callEndTime)) + '</td>' +
-          '<td><span style="font-weight:700; font-variant-numeric:tabular-nums; color:' + (log.direction === 'missed' ? 'var(--rose-text)' : 'var(--violet)') + ';">' + escapeHtml(log.durationFormatted) + '</span></td>' +
+          '<td><span style="font-weight:700; font-variant-numeric:tabular-nums; color:' + (log.direction === 'missed' || log.direction === 'unanswered' ? 'var(--rose-text)' : 'var(--violet)') + ';">' + escapeHtml(log.durationFormatted) + '</span></td>' +
           '<td style="text-align:right; white-space:nowrap;">' +
             (linkedLead
               ? '<button class="btn-row-open" onclick="openDetailModal(\'' + escapeHtml(linkedLead.id) + '\')">Profile</button>'
@@ -2933,6 +3015,64 @@
           '</td>';
         tbody.appendChild(tr);
       });
+    }
+
+    function openCallTranscriptModal(callId) {
+      const call = allCallLogs.find(c => c.id === callId);
+      if (!call) return;
+      const clientName = call.clientName || call.candidateName || 'Client';
+      const clientPhone = call.clientPhone || call.candidatePhone || '';
+      const salesPerson = call.salespersonName || call.recruiterName || 'Jinendra';
+
+      document.getElementById('transcriptModalTitle').textContent = `Call Details: ${clientName} (${clientPhone})`;
+      document.getElementById('transcriptModalMeta').innerHTML = `
+        <span><strong>Salesperson:</strong> ${escapeHtml(salesPerson)}</span> &bull; 
+        <span><strong>Status:</strong> ${escapeHtml(call.callStatus || call.direction)}</span> &bull; 
+        <span><strong>Duration:</strong> ${escapeHtml(call.durationFormatted)}</span>
+      `;
+
+      const audioBox = document.getElementById('transcriptModalAudioBox');
+      if (call.recordingUrl) {
+        audioBox.innerHTML = `
+          <div style="background:#f1f5f9; border-radius:8px; padding:10px; margin-bottom:12px; display:flex; align-items:center; gap:10px;">
+            <i class="fa-solid fa-volume-high" style="color:#6366f1;"></i>
+            <audio controls src="${escapeHtml(call.recordingUrl)}" style="flex:1; height:32px;"></audio>
+            <a href="${escapeHtml(call.recordingUrl)}" download="${escapeHtml(call.recordingFile || 'call_recording.m4a')}" class="btn-row-open" style="text-decoration:none;"><i class="fa-solid fa-download"></i></a>
+          </div>
+        `;
+        audioBox.style.display = 'block';
+      } else {
+        audioBox.innerHTML = '';
+        audioBox.style.display = 'none';
+      }
+
+      document.getElementById('transcriptModalBody').textContent = call.callTranscript || 'No transcript text recorded.';
+      document.getElementById('transcriptModalNotes').value = call.notes || '';
+      document.getElementById('transcriptModalSaveBtn').onclick = () => saveCallTranscriptNotes(call.id);
+
+      document.getElementById('transcriptModal').style.display = 'flex';
+    }
+
+    function closeCallTranscriptModal() {
+      document.getElementById('transcriptModal').style.display = 'none';
+    }
+
+    async function saveCallTranscriptNotes(callId) {
+      const notes = document.getElementById('transcriptModalNotes').value.trim();
+      try {
+        const res = await fetch(`/api/call-logs/${encodeURIComponent(callId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notes })
+        });
+        if (res.ok) {
+          showToast('Call notes updated successfully!');
+          closeCallTranscriptModal();
+          await loadCallLogs();
+        }
+      } catch (e) {
+        showToast('Failed to update call notes');
+      }
     }
 
     // ==================== CANDIDATE PIPELINE ====================
