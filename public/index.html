@@ -1629,9 +1629,9 @@
             </button>
 
             <!-- Admin / Team Lead Sales Executive Switcher -->
-            <div class="salesperson-switcher" id="adminSales ExecutiveFilterBox">
+            <div class="salesperson-switcher" id="adminSalesExecutiveFilterBox">
               <i class="fa-solid fa-filter"></i>
-              <select id="teamSales ExecutiveSelect" onchange="onSales ExecutiveFilterChange()">
+              <select id="teamSalesExecutiveSelect" onchange="onSalesExecutiveFilterChange()">
                 <option value="All">All Sales Executives</option>
               </select>
             </div>
@@ -1937,7 +1937,7 @@
               <div class="kpi-card">
                 <div>
                   <div class="kpi-label">Active Sales Executives</div>
-                  <div class="kpi-value" id="teamStatActiveSales Executives">0</div>
+                  <div class="kpi-value" id="teamStatActiveSalesExecutives">0</div>
                 </div>
                 <div class="kpi-icon" style="background:var(--primary-soft); color:var(--primary);">
                   <i class="fa-solid fa-user-check"></i>
@@ -2034,7 +2034,7 @@
         <div style="display:flex; align-items:center; gap:12px; min-width:0;">
           <div class="cand-avatar" id="mAvatarInitials" style="width:40px; height:40px; font-size:14px;">C</div>
           <div style="min-width:0;">
-            <div style="font-size:16px; font-weight:700; color:var(--text-primary);" id="mClient / LeadName">Client / Lead</div>
+            <div style="font-size:16px; font-weight:700; color:var(--text-primary);" id="mClientLeadName">Client / Lead</div>
             <div style="font-size:12px; color:var(--text-muted);" id="mLeadSub">Lead Profile</div>
           </div>
         </div>
@@ -2196,7 +2196,7 @@
           </div>
           <div class="field-block">
             <label>Sales Executive</label>
-            <input type="text" id="logCallSales Executive" readonly style="background:var(--bg-subtle);">
+            <input type="text" id="logCallSalesExecutive" readonly style="background:var(--bg-subtle);">
           </div>
         </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
@@ -2271,8 +2271,13 @@
       leads: 'Client Deals & Pipeline',
       callLogs: 'Call Activity',
       followUps: 'Action Queue',
+      messagesStream: 'Live Messages (100% Stream)',
       teamReport: 'Team Analytics'
     };
+
+    function isSalesRole(u) {
+      return Boolean(u && (u.role === 'sales' || u.role === 'salesperson' || u.role === 'recruiter'));
+    }
 
     const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -2347,10 +2352,10 @@
       return digits.length >= 10 ? digits.slice(-10) : digits;
     }
 
-    function salespersonMatches(itemSales Executive, targetSales Executive) {
-      if (!itemSales Executive || !targetSales Executive) return false;
-      const cleanA = String(itemSales Executive).replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
-      const cleanB = String(targetSales Executive).replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+    function salespersonMatches(itemSalesExecutive, targetSalesExecutive) {
+      if (!itemSalesExecutive || !targetSalesExecutive) return false;
+      const cleanA = String(itemSalesExecutive).replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+      const cleanB = String(targetSalesExecutive).replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
       if (cleanA === cleanB) return true;
       const aFirst = cleanA.split(' ')[0];
       const bFirst = cleanB.split(' ')[0];
@@ -2413,10 +2418,10 @@
       if (!banner || !currentUser) return;
 
       let calls = Array.isArray(liveActiveCalls) ? liveActiveCalls.slice() : [];
-      if (currentUser.role === 'salesperson') {
+      if (isSalesRole(currentUser)) {
         calls = calls.filter(c => salespersonMatches(c.salespersonName, currentUser.name));
       } else {
-        const selEl = document.getElementById('teamSales ExecutiveSelect');
+        const selEl = document.getElementById('teamSalesExecutiveSelect');
         const selVal = selEl ? selEl.value : 'All';
         if (selVal && selVal !== 'All') {
           calls = calls.filter(c => salespersonMatches(c.salespersonName, selVal));
@@ -2711,11 +2716,15 @@
       document.getElementById('currentUserName').textContent = currentUser.name;
       document.getElementById('sidebarUserInitials').textContent = getInitials(currentUser.name);
 
-      const filterBox = document.getElementById('adminSales ExecutiveFilterBox');
+      const filterBox = document.getElementById('adminSalesExecutiveFilterBox');
       const roleLabel = document.getElementById('currentUserRoleText');
       const workspaceRole = document.getElementById('sidebarWorkspaceRole');
       const navAnalyticsLabel = document.getElementById('navAnalyticsLabel');
       const thInspect = document.getElementById('thTeamInspect');
+      const quickSwitcher = document.getElementById('quickProfileSwitcher');
+      if (quickSwitcher && currentUser.username) {
+        quickSwitcher.value = currentUser.username;
+      }
 
       if (currentUser.role === 'admin') {
         roleLabel.textContent = 'Administrator';
@@ -2898,7 +2907,7 @@
       document.querySelectorAll('.view-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + tabName));
       const heading = document.getElementById('activeViewHeading');
       if (heading) {
-        if (tabName === 'teamReport' && currentUser && currentUser.role === 'salesperson') {
+        if (tabName === 'teamReport' && isSalesRole(currentUser)) {
           heading.textContent = 'My Performance';
         } else {
           heading.textContent = VIEW_TITLES[tabName] || 'Workspace';
@@ -2912,7 +2921,8 @@
       await Promise.all([
         loadLeads(),
         loadCallLogs(),
-        loadSales ExecutiveScorecard(),
+        loadStreamMessages(),
+        loadSalesExecutiveScorecard(),
         loadActiveCalls()
       ]);
       rebuildHistoryDropdown();
@@ -2924,32 +2934,32 @@
       }
     }
 
-    function onSales ExecutiveFilterChange() {
+    function onSalesExecutiveFilterChange() {
       renderLiveCallsBanner();
       refreshAllData();
     }
 
-    function inspectSales ExecutivePipeline(salespersonName) {
-      if (!currentUser || currentUser.role === 'salesperson') return;
-      const sel = document.getElementById('teamSales ExecutiveSelect');
+    function inspectSalesExecutivePipeline(salespersonName) {
+      if (!currentUser || isSalesRole(currentUser)) return;
+      const sel = document.getElementById('teamSalesExecutiveSelect');
       if (sel) {
         sel.value = salespersonName;
-        onSales ExecutiveFilterChange();
+        onSalesExecutiveFilterChange();
         switchTab('leads');
         showToast('Filtered workspace to ' + salespersonName);
       }
     }
 
     // ==================== TEAM ANALYTICS SCORECARD ====================
-    async function loadSales ExecutiveScorecard() {
+    async function loadSalesExecutiveScorecard() {
       if (!currentUser) return;
       try {
         const res = await fetch('/api/salespersons?date=' + encodeURIComponent(selectedDate));
         const data = await res.json();
         teamScorecard = data.salespersons || [];
 
-        if (currentUser.role !== 'salesperson') {
-          const sel = document.getElementById('teamSales ExecutiveSelect');
+        if (!isSalesRole(currentUser)) {
+          const sel = document.getElementById('teamSalesExecutiveSelect');
           const prevVal = sel.value || 'All';
           sel.innerHTML = '<option value="All">All Sales Executives</option>';
           teamScorecard.forEach(r => {
@@ -2969,7 +2979,7 @@
       tbody.innerHTML = '';
 
       let rows = teamScorecard.slice();
-      if (currentUser && currentUser.role === 'salesperson') {
+      if (isSalesRole(currentUser)) {
         rows = rows.filter(r => salespersonMatches(r.name, currentUser.name));
       } else {
         rows.sort((a, b) => ((b.callsCount || 0) + (b.leadsCount || 0)) - ((a.callsCount || 0) + (a.leadsCount || 0)));
@@ -2980,13 +2990,13 @@
       const sumTalkSec = rows.reduce((s, r) => s + (r.totalTalkSeconds || 0), 0);
       const sumConv = rows.reduce((s, r) => s + (r.interviewsCount || 0), 0);
 
-      document.getElementById('teamStatActiveSales Executives').textContent = currentUser && currentUser.role === 'salesperson' ? '1' : String(activeRecs || rows.length);
+      document.getElementById('teamStatActiveSalesExecutives').textContent = isSalesRole(currentUser) ? '1' : String(activeRecs || rows.length);
       document.getElementById('teamStatCalls').textContent = String(sumCalls);
       document.getElementById('teamStatTalk').textContent = formatDurationSummary(sumTalkSec);
       document.getElementById('teamStatConversions').textContent = String(sumConv);
 
       const maxTalk = Math.max(60, ...rows.map(r => r.totalTalkSeconds || 0));
-      const isManager = currentUser && currentUser.role !== 'salesperson';
+      const isManager = currentUser && !isSalesRole(currentUser);
 
       if (!rows.length) {
         tbody.innerHTML =
@@ -3026,7 +3036,7 @@
           '<td><strong>' + (r.leadsCount || 0) + '</strong></td>' +
           '<td><strong style="color:var(--emerald-text);">' + (r.interviewsCount || 0) + '</strong></td>' +
           (isManager
-            ? '<td style="text-align:right;"><button class="btn-row-open" onclick=\'inspectSales ExecutivePipeline(' + recArg + ')\'>View Pipeline</button></td>'
+            ? '<td style="text-align:right;"><button class="btn-row-open" onclick=\'inspectSalesExecutivePipeline(' + recArg + ')\'>View Pipeline</button></td>'
             : '<td style="display:none;"></td>');
         tbody.appendChild(tr);
       });
@@ -3038,8 +3048,8 @@
       let url = '/api/call-logs?user_role=' + encodeURIComponent(currentUser.role) +
                 '&user_name=' + encodeURIComponent(currentUser.name) +
                 '&date=' + encodeURIComponent(selectedDate);
-      if (currentUser.role !== 'salesperson') {
-        const sel = document.getElementById('teamSales ExecutiveSelect').value;
+      if (!isSalesRole(currentUser)) {
+        const sel = document.getElementById('teamSalesExecutiveSelect').value;
         if (sel && sel !== 'All') url += '&salesperson=' + encodeURIComponent(sel);
       }
       try {
@@ -3083,9 +3093,9 @@
       let url = '/api/messages?user_role=' + encodeURIComponent(currentUser.role) +
                 '&user_name=' + encodeURIComponent(currentUser.name) +
                 '&date=' + encodeURIComponent(selectedDate);
-      if (currentUser.role !== 'sales' && currentUser.role !== 'recruiter') {
-        const sel = document.getElementById('teamRecruiterSelect').value;
-        if (sel && sel !== 'All') url += '&recruiter=' + encodeURIComponent(sel);
+      if (!isSalesRole(currentUser)) {
+        const sel = document.getElementById('teamSalesExecutiveSelect').value;
+        if (sel && sel !== 'All') url += '&salesperson=' + encodeURIComponent(sel);
       }
       try {
         const res = await fetch(url, { headers: { 'X-User-Role': currentUser.role, 'X-User-Name': currentUser.name } });
@@ -3155,7 +3165,7 @@
             escapeHtml(m.text) +
           '</td>' +
           '<td>' +
-            (m.leadId ? '<button class="btn-row-open" onclick="openDetailModal('' + escapeHtml(m.leadId) + '')">Deal Profile</button>' : '') +
+            (m.leadId ? '<button class="btn-row-open" onclick="openDetailModal(\'' + escapeHtml(m.leadId) + '\')">Deal Profile</button>' : '') +
           '</td>';
         tbody.appendChild(tr);
       });
@@ -3315,8 +3325,8 @@
       let url = '/api/leads?user_role=' + encodeURIComponent(currentUser.role) +
                 '&user_name=' + encodeURIComponent(currentUser.name) +
                 '&date=' + encodeURIComponent(selectedDate);
-      if (currentUser.role !== 'salesperson') {
-        const sel = document.getElementById('teamSales ExecutiveSelect').value;
+      if (!isSalesRole(currentUser)) {
+        const sel = document.getElementById('teamSalesExecutiveSelect').value;
         if (sel && sel !== 'All') url += '&salesperson=' + encodeURIComponent(sel);
       }
       try {
@@ -3331,10 +3341,10 @@
 
     function updateLeadCategoryStats(leads) {
       document.getElementById('statTotal').textContent = leads.length;
-      document.getElementById('statChange').textContent = leads.filter(l => l.category === 'Experienced / Job Change').length;
-      document.getElementById('statSeeker').textContent = leads.filter(l => l.category === 'New Job Seeker').length;
-      document.getElementById('statClient').textContent = leads.filter(l => l.category === 'Client / Employer Lead').length;
-      document.getElementById('statGeneral').textContent = leads.filter(l => !l.category || l.category === 'General Enquiry').length;
+      document.getElementById('statChange').textContent = leads.filter(l => l.category === 'Experienced / Job Change' || l.category === 'Hot Deal / Proposal').length;
+      document.getElementById('statSeeker').textContent = leads.filter(l => l.category === 'New Job Seeker' || l.category === 'Active Prospect').length;
+      document.getElementById('statClient').textContent = leads.filter(l => l.category === 'Client / Employer Lead' || l.category === 'Client / Corporate Lead').length;
+      document.getElementById('statGeneral').textContent = leads.filter(l => !l.category || l.category === 'General Enquiry' || l.category === 'General Sales Enquiry').length;
     }
 
     function selectCategoryCard(catValue) {
@@ -3409,7 +3419,12 @@
         if (ch === 'WhatsApp') matchCh = leadHasWhatsApp(l);
         else if (ch === 'Email') matchCh = leadHasEmail(l);
         else if (ch === 'Call') matchCh = leadHasCall(l);
-        const matchCat = cat === 'All' || (cat === 'General Enquiry' ? (!l.category || l.category === 'General Enquiry') : l.category === cat);
+        let matchCat = true;
+        if (cat === 'Experienced / Job Change') matchCat = l.category === 'Experienced / Job Change' || l.category === 'Hot Deal / Proposal';
+        else if (cat === 'New Job Seeker') matchCat = l.category === 'New Job Seeker' || l.category === 'Active Prospect';
+        else if (cat === 'Client / Employer Lead') matchCat = l.category === 'Client / Employer Lead' || l.category === 'Client / Corporate Lead';
+        else if (cat === 'General Enquiry') matchCat = !l.category || l.category === 'General Enquiry' || l.category === 'General Sales Enquiry';
+        else if (cat !== 'All') matchCat = l.category === cat;
         const matchSt = st === 'All' || l.status === st;
         return matchQ && matchCh && matchCat && matchSt;
       });
@@ -3591,7 +3606,7 @@
 
       document.getElementById('mLeadId').value = lead.id;
       document.getElementById('mAvatarInitials').textContent = getInitials(lead.clientName);
-      document.getElementById('mClient / LeadName').textContent = lead.clientName || 'Client / Lead';
+      document.getElementById('mClientLeadName').textContent = lead.clientName || 'Client / Lead';
       const realChannels = [];
       if (leadHasWhatsApp(lead)) realChannels.push('WhatsApp');
       if (leadHasEmail(lead)) realChannels.push('Email');
@@ -3701,14 +3716,14 @@
         if (!text) return;
 
         const lowerSpk = currentSpeaker.toLowerCase();
-        if (lowerSpk.includes('salesperson')) {
+        if (lowerSpk.includes('sales') || lowerSpk.includes('recruiter')) {
           const el = document.createElement('div');
           el.className = 'msg-bubble msg-salesperson';
           el.innerHTML =
             '<div class="msg-sender"><i class="fa-solid fa-user-tie"></i> ' + escapeHtml(currentSpeaker) + '</div>' +
             '<div>' + escapeHtml(text).replace(/\n/g, '<br>') + '</div>';
           msgBox.appendChild(el);
-        } else if (lowerSpk.includes('client')) {
+        } else if (lowerSpk.includes('client') || lowerSpk.includes('candidate')) {
           const el = document.createElement('div');
           el.className = 'msg-bubble msg-client';
           el.innerHTML =
@@ -3738,7 +3753,7 @@
           currentSpeaker = '';
           return;
         }
-        const speakerMatch = line.match(/^\[(Sales Executive[^\]]*|Client / Lead[^\]]*)\]:\s*(.*)$/i);
+        const speakerMatch = line.match(/^\[(Sales[^\]]*|Recruiter[^\]]*|Client[^\]]*|Candidate[^\]]*)\]:\s*(.*)$/i);
         if (speakerMatch) {
           flushMsg();
           currentSpeaker = speakerMatch[1];
@@ -3804,7 +3819,7 @@
     // ==================== MANUAL CALL LOGGING ====================
     function openCallLogModal() {
       if (!currentUser) return;
-      document.getElementById('logCallSales Executive').value = currentUser.role === 'salesperson' ? currentUser.name : 'Jinendra';
+      document.getElementById('logCallSalesExecutive').value = isSalesRole(currentUser) ? currentUser.name : 'Jinendra';
       document.getElementById('logCallPhone').value = '';
       document.getElementById('logCallName').value = '';
       document.getElementById('logCallDuration').value = '';
@@ -3831,7 +3846,7 @@
       btn.disabled = true;
       try {
         const payload = {
-          salesperson_name: document.getElementById('logCallSales Executive').value.trim(),
+          salesperson_name: document.getElementById('logCallSalesExecutive').value.trim(),
           client_phone: phone,
           client_name: document.getElementById('logCallName').value.trim(),
           call_direction: document.getElementById('logCallDirection').value,
@@ -3896,7 +3911,7 @@
       allLeads.forEach(l => {
         csv += [l.id, l.lastUpdated || l.timestamp, l.salesperson, l.channel, l.category, l.clientName, l.phone, l.email, l.currentCtc, l.expectedCtc, l.noticePeriod, l.skills, l.status].map(csvEscape).join(',') + '\n';
       });
-      downloadCSV(csv, 'Client / Lead_Pipeline_' + selectedDate);
+      downloadCSV(csv, 'Client_Lead_Pipeline_' + selectedDate);
     }
 
     function downloadCSV(csv, filenameBase) {

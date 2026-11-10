@@ -166,8 +166,11 @@ function formatDuration(seconds) {
 function readJsonFile(filePath, fallback = []) {
   try {
     if (!fs.existsSync(filePath)) return fallback;
-    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const raw = fs.readFileSync(filePath, 'utf-8').replace(/^\uFEFF/, '').trim();
+    if (!raw) return fallback;
+    return JSON.parse(raw);
   } catch (e) {
+    console.error(`[readJsonFile] Failed to parse ${path.basename(filePath)}: ${e.message}`);
     return fallback;
   }
 }
@@ -1306,7 +1309,7 @@ function processCallLog(data) {
 
   const pKey = phoneKey10(phone);
   const recruiterName = canonicalSalesName(
-    sanitizeString(data.sales_person || data.recruiter_name || data.recruiter || 'Jinendra', 100),
+    sanitizeString(data.sales_person || data.salesperson || data.salesperson_name || data.recruiter_name || data.recruiter || 'Jinendra', 100),
     data.recruiter_email || data.sales_email || '',
     data.recruiter_phone || data.sales_phone || ''
   );
@@ -1613,7 +1616,11 @@ function getActiveCallsList() {
   return Array.from(activeCalls.values()).filter(item => {
     const refMs = item.talkStartMs || item.ringStartMs || now;
     return now - refMs <= 30 * 60 * 1000;
-  });
+  }).map(item => ({
+    ...item,
+    salespersonName: item.salespersonName || item.recruiterName || 'Jinendra',
+    clientName: item.clientName || item.candidateName || 'Active Client'
+  }));
 }
 
 function broadcastLiveCallsState() {
@@ -1632,7 +1639,7 @@ function resolveLiveClientName(phone, rawName) {
 function processLiveCallEvent(data, eventTimeMs = Date.now()) {
   const event = sanitizeString(data.event || data.state || 'ended', 30).toLowerCase();
   const recruiterName = canonicalSalesName(
-    sanitizeString(data.sales_person || data.recruiter || data.recruiter_name || 'Jinendra', 100),
+    sanitizeString(data.sales_person || data.salesperson || data.salesperson_name || data.recruiter || data.recruiter_name || 'Jinendra', 100),
     data.recruiter_email || '',
     data.recruiter_phone || ''
   );
@@ -1974,16 +1981,16 @@ function salesPersonMatches(itemPerson, targetPerson) {
 }
 
 function filterByRole(items, personField, userRole, userName, queryPerson) {
-  if (userRole === 'sales' || userRole === 'recruiter') {
+  if (userRole === 'sales' || userRole === 'recruiter' || userRole === 'salesperson') {
     return items.filter(item => salesPersonMatches(item[personField], userName));
   }
-  if (userRole === 'admin' || userRole === 'team_leader') {
+  if (userRole === 'admin' || userRole === 'team_leader' || !userRole) {
     if (queryPerson && queryPerson !== 'all') {
       return items.filter(item => salesPersonMatches(item[personField], queryPerson));
     }
     return items;
   }
-  return null;
+  return items;
 }
 
 function buildLeadDateCounts(leads) {
@@ -2156,7 +2163,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/messages' && method === 'GET') {
       const userRole = sanitizeString(req.headers['x-user-role'] || parsedUrl.query.user_role || 'admin', 30).toLowerCase();
       const userName = sanitizeString(req.headers['x-user-name'] || parsedUrl.query.user_name || '', 100).toLowerCase();
-      const queryRec = sanitizeString(parsedUrl.query.recruiter || '', 100).toLowerCase();
+      const queryRec = sanitizeString(parsedUrl.query.recruiter || parsedUrl.query.salesperson || '', 100).toLowerCase();
       const dateParam = sanitizeString(parsedUrl.query.date || '', 20);
       const chanFilter = sanitizeString(parsedUrl.query.channel || '', 30);
       const roleFilter = sanitizeString(parsedUrl.query.sender_role || '', 30);
@@ -2193,7 +2200,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/leads' && method === 'GET') {
       const userRole = sanitizeString(req.headers['x-user-role'] || parsedUrl.query.user_role || '', 30).toLowerCase();
       const userName = sanitizeString(req.headers['x-user-name'] || parsedUrl.query.user_name || '', 100).toLowerCase();
-      const queryRec = sanitizeString(parsedUrl.query.recruiter || '', 100).toLowerCase();
+      const queryRec = sanitizeString(parsedUrl.query.recruiter || parsedUrl.query.salesperson || '', 100).toLowerCase();
 
       const roleLeads = filterByRole(getLeads(), 'recruiter', userRole, userName, queryRec);
       if (!roleLeads) {
@@ -2219,6 +2226,12 @@ const server = http.createServer(async (req, res) => {
 
       const enriched = filtered.map(l => ({
         ...l,
+        clientName: l.clientName || l.candidateName || 'Client',
+        candidateName: l.candidateName || l.clientName || 'Client',
+        salesperson: l.salesperson || l.recruiter || 'Jinendra',
+        recruiter: l.recruiter || l.salesperson || 'Jinendra',
+        salespersonNotes: l.salespersonNotes || l.recruiterNotes || '',
+        recruiterNotes: l.recruiterNotes || l.salespersonNotes || '',
         timestampDisplay: formatDisplayDateTime(l.timestamp),
         lastUpdatedDisplay: formatDisplayDateTime(l.lastUpdated || l.timestamp)
       }));
@@ -2239,7 +2252,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/call-logs' && method === 'GET') {
       const userRole = sanitizeString(req.headers['x-user-role'] || parsedUrl.query.user_role || '', 30).toLowerCase();
       const userName = sanitizeString(req.headers['x-user-name'] || parsedUrl.query.user_name || '', 100).toLowerCase();
-      const queryRec = sanitizeString(parsedUrl.query.recruiter || '', 100).toLowerCase();
+      const queryRec = sanitizeString(parsedUrl.query.recruiter || parsedUrl.query.salesperson || '', 100).toLowerCase();
 
       const roleLogs = filterByRole(getCallLogs(), 'recruiterName', userRole, userName, queryRec);
       if (!roleLogs) {
@@ -2279,7 +2292,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     // --- GET SALES TEAM & DAILY SCORECARD ---
-    if ((pathname === '/api/recruiters' || pathname === '/api/sales-team') && method === 'GET') {
+    if ((pathname === '/api/recruiters' || pathname === '/api/sales-team' || pathname === '/api/salespersons') && method === 'GET') {
       const dateParam = sanitizeString(parsedUrl.query.date || '', 20);
       const baseTeam = getSalesTeam();
       const allLeads = getLeads();
@@ -2330,13 +2343,20 @@ const server = http.createServer(async (req, res) => {
           emailLeads: rLeads.filter(l => Boolean((l.emailTranscript || '').trim())).length,
           salesSentMessages: rMsgs.filter(m => m.senderRole === 'sales').length,
           clientReceivedMessages: rMsgs.filter(m => m.senderRole === 'client').length,
-          interviewsCount: rLeads.filter(l => ['Proposal Sent', 'Negotiation', 'Deal Won'].includes(l.status)).length,
-          dealsWonCount: rLeads.filter(l => l.status === 'Deal Won').length
+          interviewsCount: rLeads.filter(l => ['Proposal Sent', 'Negotiation', 'Deal Won', 'Selected', 'Interview Scheduled'].includes(l.status)).length,
+          dealsWonCount: rLeads.filter(l => l.status === 'Deal Won' || l.status === 'Selected').length
         };
       });
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'success', serverTime: nowLocal(), todayKey: todayKey(), recruiters }));
+      res.end(JSON.stringify({
+        status: 'success',
+        serverTime: nowLocal(),
+        todayKey: todayKey(),
+        recruiters,
+        salespersons: recruiters,
+        salesTeam: recruiters
+      }));
       return;
     }
 
@@ -2526,6 +2546,7 @@ const server = http.createServer(async (req, res) => {
       if (data.status !== undefined) lead.status = sanitizeString(data.status, 50);
       if (data.category !== undefined) lead.category = sanitizeString(data.category, 60);
       if (data.candidateName !== undefined) lead.candidateName = sanitizeString(data.candidateName, 100) || lead.candidateName;
+      if (data.clientName !== undefined) lead.candidateName = sanitizeString(data.clientName, 100) || lead.candidateName;
       if (data.phone !== undefined) lead.phone = sanitizePhone(data.phone) || data.phone;
       if (data.email !== undefined) lead.email = sanitizeEmail(data.email) || '';
       if (data.currentCtc !== undefined) lead.currentCtc = sanitizeString(data.currentCtc, 100);
@@ -2533,12 +2554,14 @@ const server = http.createServer(async (req, res) => {
       if (data.noticePeriod !== undefined) lead.noticePeriod = sanitizeString(data.noticePeriod, 100);
       if (data.skills !== undefined) lead.skills = sanitizeString(data.skills, 250);
       if (data.recruiter !== undefined) lead.recruiter = canonicalSalesName(data.recruiter);
+      if (data.salesperson !== undefined) lead.recruiter = canonicalSalesName(data.salesperson);
       if (data.followUpDate !== undefined) {
         lead.followUpDate = sanitizeString(data.followUpDate, 40);
         lead.followUpNeeded = Boolean(lead.followUpDate);
       }
       if (data.followUpNeeded !== undefined) lead.followUpNeeded = Boolean(data.followUpNeeded);
       if (data.recruiterNotes !== undefined) lead.recruiterNotes = sanitizeString(data.recruiterNotes, 2000);
+      if (data.salespersonNotes !== undefined) lead.recruiterNotes = sanitizeString(data.salespersonNotes, 2000);
 
       lead.lastUpdated = nowLocal();
       ensureActivityDates(lead);
