@@ -211,6 +211,57 @@
       color: var(--primary);
     }
 
+    .btn-eye {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 13.5px;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s;
+    }
+    .btn-eye:hover { color: var(--primary); }
+
+    .btn-quick-login {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 12px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 9px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      color: #334155;
+      transition: all 0.15s ease;
+      text-align: left;
+    }
+    .btn-quick-login:hover {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+      transform: translateY(-1px);
+    }
+    .btn-quick-admin {
+      background: linear-gradient(135deg, #eef2ff 0%, #f0fdf4 100%);
+      border: 1px solid #c7d2fe;
+      margin-bottom: 8px;
+    }
+    .btn-quick-admin:hover {
+      background: linear-gradient(135deg, #e0e7ff 0%, #dcfce7 100%);
+      border-color: #818cf8;
+    }
+      color: var(--primary);
+    }
+
     /* ==================== APP SHELL LAYOUT ==================== */
     #appScreen {
       display: none;
@@ -1363,7 +1414,7 @@
 
   <!-- ==================== SIGN IN SCREEN ==================== -->
   <div id="loginScreen">
-    <div class="login-shell">
+    <div class="login-shell" style="max-width:440px;">
       <div class="login-header">
         <div class="brand-mark"><i class="fa-solid fa-layer-group"></i></div>
         <div>
@@ -1371,6 +1422,9 @@
           <div class="login-subtitle">Omnichannel Sales &amp; Call Intelligence</div>
         </div>
       </div>
+
+      <!-- INLINE ALERT BANNER -->
+      <div id="loginAlertBox" style="display:none; padding:10px 14px; border-radius:9px; font-size:12.5px; margin-bottom:14px; align-items:center; gap:8px;"></div>
 
       <div class="auth-field">
         <label for="loginUsername">Username</label>
@@ -1385,13 +1439,71 @@
         <div class="auth-input-wrap">
           <i class="fa-solid fa-lock"></i>
           <input type="password" id="loginPassword" placeholder="Enter your password" autocomplete="current-password" onkeydown="if(event.key==='Enter') handleLogin()">
+          <button type="button" class="btn-eye" onclick="togglePasswordVisibility()" title="Show/Hide Password">
+            <i id="passEyeIcon" class="fa-regular fa-eye"></i>
+          </button>
         </div>
       </div>
 
-      <button class="btn-auth" onclick="handleLogin()">
-        <span>Sign In to Workspace</span>
+      <button class="btn-auth" id="btnSubmitLogin" onclick="handleLogin()">
+        <span id="btnSubmitLoginText">Sign In to Workspace</span>
         <i class="fa-solid fa-arrow-right"></i>
       </button>
+
+      <!-- 1-CLICK INSTANT ENTRY BUTTONS -->
+      <div style="margin-top:22px; padding-top:16px; border-top:1px solid #e2e8f0;">
+        <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:#64748b; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between;">
+          <span>⚡ 1-Click Instant Entry</span>
+          <span style="font-size:10px; font-weight:600; color:#10b981; background:rgba(16,185,129,0.1); padding:2px 6px; border-radius:4px;">Direct Access</span>
+        </div>
+
+        <!-- 1-CLICK SUPER ADMIN BUTTON -->
+        <button type="button" class="btn-quick-login btn-quick-admin" onclick="quickLogin('admin', 'Akshat@123#')">
+          <div style="display:flex; align-items:center; gap:9px;">
+            <div style="width:28px; height:28px; border-radius:6px; background:#4f46e5; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px;">
+              <i class="fa-solid fa-shield-halved"></i>
+            </div>
+            <div>
+              <div style="font-weight:700; font-size:12.5px; color:#1e1b4b;">Super Admin Panel</div>
+              <div style="font-size:10.5px; color:#4338ca;">Full Access &bull; Pipeline &bull; Analytics &bull; Recordings</div>
+            </div>
+          </div>
+          <i class="fa-solid fa-chevron-right" style="color:#6366f1; font-size:11px;"></i>
+        </button>
+
+        <!-- 1-CLICK RECRUITER / SALES BUTTONS -->
+        <div style="font-size:11px; font-weight:600; color:#475569; margin:10px 0 6px 0;">Recruiter / Sales Executive Panels:</div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:7px;">
+          <button type="button" class="btn-quick-login" onclick="quickLogin('jinendra', 'Jinendra@123')">
+            <span style="display:flex; align-items:center; gap:6px;">
+              <i class="fa-solid fa-user-tie" style="color:#0ea5e9;"></i>
+              <strong>Jinendra</strong>
+            </span>
+            <i class="fa-solid fa-arrow-right" style="font-size:10px; color:#94a3b8;"></i>
+          </button>
+          <button type="button" class="btn-quick-login" onclick="quickLogin('vishal', 'Vishal@123')">
+            <span style="display:flex; align-items:center; gap:6px;">
+              <i class="fa-solid fa-user-tie" style="color:#0ea5e9;"></i>
+              <strong>Vishal</strong>
+            </span>
+            <i class="fa-solid fa-arrow-right" style="font-size:10px; color:#94a3b8;"></i>
+          </button>
+          <button type="button" class="btn-quick-login" onclick="quickLogin('rahul', 'Rahul@123')">
+            <span style="display:flex; align-items:center; gap:6px;">
+              <i class="fa-solid fa-user-tie" style="color:#0ea5e9;"></i>
+              <strong>Rahul</strong>
+            </span>
+            <i class="fa-solid fa-arrow-right" style="font-size:10px; color:#94a3b8;"></i>
+          </button>
+          <button type="button" class="btn-quick-login" onclick="quickLogin('archana', 'Archana@123')">
+            <span style="display:flex; align-items:center; gap:6px;">
+              <i class="fa-solid fa-user-tie" style="color:#0ea5e9;"></i>
+              <strong>Archana</strong>
+            </span>
+            <i class="fa-solid fa-arrow-right" style="font-size:10px; color:#94a3b8;"></i>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1468,6 +1580,16 @@
             <button class="btn-signout" onclick="handleLogout()" title="Sign Out">
               <i class="fa-solid fa-arrow-right-from-bracket"></i>
             </button>
+          </div>
+          <div style="margin-top:10px; padding-top:10px; border-top:1px solid rgba(226,232,240,0.8);">
+            <select id="quickProfileSwitcher" onchange="switchActiveProfile(this.value)" style="width:100%; font-size:11.5px; font-weight:600; padding:6px 8px; border-radius:7px; border:1px solid var(--border); background:#fff; color:var(--text-primary); cursor:pointer;">
+              <option value="" disabled selected>⚡ Switch Profile / Role</option>
+              <option value="admin">👑 Super Admin</option>
+              <option value="jinendra">👔 Jinendra (Sales)</option>
+              <option value="vishal">👔 Vishal (Sales)</option>
+              <option value="rahul">👔 Rahul (Sales)</option>
+              <option value="archana">👔 Archana (Sales)</option>
+            </select>
           </div>
         </div>
       </aside>
@@ -2100,7 +2222,7 @@
 
       <div class="modal-content">
         <div style="display:flex; gap:18px; align-items:center; flex-wrap:wrap; background:var(--bg-app); border:1px solid var(--border); border-radius:12px; padding:16px;">
-          <img id="phoneSyncQrImg" src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=http://192.168.1.34:4000/phone" alt="Mobile Companion QR" style="width:116px; height:116px; border-radius:10px; background:#fff; padding:6px; border:1px solid var(--border);" onerror="this.style.display='none'">
+          <img id="phoneSyncQrImg" src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=http://192.168.1.34:3000/phone" alt="Mobile Companion QR" style="width:116px; height:116px; border-radius:10px; background:#fff; padding:6px; border:1px solid var(--border);" onerror="this.style.display='none'">
           <div style="flex:1; min-width:210px;">
             <div style="display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600; color:var(--emerald-text); background:var(--emerald-soft); border:1px solid #a7f3d0; padding:3px 9px; border-radius:999px; margin-bottom:8px;">
               <i class="fa-solid fa-cloud-bolt"></i> Wi-Fi &amp; Cellular Ready
@@ -2108,7 +2230,7 @@
             <div style="font-size:13px; font-weight:600; color:var(--text-primary); margin-bottom:4px;">Mobile Companion Portal</div>
             <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">Scan QR on Android or copy the companion link to configure one-time webhook sync.</div>
             <div style="display:flex; gap:6px;">
-              <input type="text" id="phoneWizardUrlInput" value="http://192.168.1.34:4000/phone" readonly style="flex:1; padding:7px 10px; border:1px solid var(--border-strong); border-radius:7px; font-family:monospace; font-size:12px; color:var(--text-primary); background:#fff;">
+              <input type="text" id="phoneWizardUrlInput" value="http://192.168.1.34:3000/phone" readonly style="flex:1; padding:7px 10px; border:1px solid var(--border-strong); border-radius:7px; font-family:monospace; font-size:12px; color:var(--text-primary); background:#fff;">
               <button class="btn-ui btn-ui-secondary" onclick="copyText(document.getElementById('phoneWizardUrlInput').value)">
                 <i class="fa-regular fa-copy"></i> Copy
               </button>
@@ -2118,7 +2240,7 @@
 
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding-top:14px; border-top:1px solid var(--border); flex-wrap:wrap; gap:10px;">
           <span style="font-size:12px; color:var(--text-muted);">
-            Server Endpoint: <strong style="color:var(--text-primary);" id="modalFixedIpText">192.168.1.34:4000</strong>
+            Server Endpoint: <strong style="color:var(--text-primary);" id="modalFixedIpText">192.168.1.34:3000</strong>
           </span>
           <a href="/phone" target="_blank" class="btn-ui btn-ui-primary">
             <span>Open Companion</span>
@@ -2143,7 +2265,7 @@
     let activeTab = 'leads';
     let currentOpenLeadId = null;
     let sseSource = null;
-    let detectedServerBase = 'http://192.168.1.34:4000';
+    let detectedServerBase = 'http://192.168.1.34:3000';
 
     const VIEW_TITLES = {
       leads: 'Client Deals & Pipeline',
@@ -2433,28 +2555,140 @@
     });
 
 
+    function togglePasswordVisibility() {
+      const passInput = document.getElementById('loginPassword');
+      const eyeIcon = document.getElementById('passEyeIcon');
+      if (!passInput) return;
+      if (passInput.type === 'password') {
+        passInput.type = 'text';
+        if (eyeIcon) {
+          eyeIcon.classList.remove('fa-eye');
+          eyeIcon.classList.add('fa-eye-slash');
+        }
+      } else {
+        passInput.type = 'password';
+        if (eyeIcon) {
+          eyeIcon.classList.remove('fa-eye-slash');
+          eyeIcon.classList.add('fa-eye');
+        }
+      }
+    }
+
+    function showLoginAlert(type, message) {
+      const box = document.getElementById('loginAlertBox');
+      if (!box) return;
+      box.style.display = 'flex';
+      if (type === 'error') {
+        box.style.background = '#fef2f2';
+        box.style.border = '1px solid #fecaca';
+        box.style.color = '#b91c1c';
+        box.innerHTML = '<i class="fa-solid fa-circle-xmark" style="font-size:14px; flex-shrink:0;"></i> <span>' + escapeHtml(message) + '</span>';
+      } else if (type === 'server') {
+        box.style.background = '#fffbeb';
+        box.style.border = '1px solid #fde68a';
+        box.style.color = '#b45309';
+        box.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="font-size:14px; flex-shrink:0;"></i> <span>' + escapeHtml(message) + '</span>';
+      } else if (type === 'loading') {
+        box.style.background = '#eef2ff';
+        box.style.border = '1px solid #c7d2fe';
+        box.style.color = '#4338ca';
+        box.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="font-size:14px; flex-shrink:0;"></i> <span>' + escapeHtml(message) + '</span>';
+      } else if (type === 'success') {
+        box.style.background = '#ecfdf5';
+        box.style.border = '1px solid #a7f3d0';
+        box.style.color = '#047857';
+        box.innerHTML = '<i class="fa-solid fa-circle-check" style="font-size:14px; flex-shrink:0;"></i> <span>' + escapeHtml(message) + '</span>';
+      }
+    }
+
+    async function quickLogin(u, p) {
+      document.getElementById('loginUsername').value = u;
+      document.getElementById('loginPassword').value = p;
+      await handleLogin();
+    }
+
     async function handleLogin() {
       const u = document.getElementById('loginUsername').value.trim();
       const p = document.getElementById('loginPassword').value.trim();
-      if (!u || !p) return showToast('Please enter username and password');
+      const btn = document.getElementById('btnSubmitLogin');
+      const btnText = document.getElementById('btnSubmitLoginText');
+
+      if (!u || !p) {
+        showLoginAlert('error', 'Please enter both username and password.');
+        showToast('Please enter username and password');
+        return;
+      }
+
+      showLoginAlert('loading', 'Authenticating with server...');
+      if (btnText) btnText.textContent = 'Verifying...';
+
       try {
         const res = await fetch('/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: u, password: p })
         });
+
+        if (!res.ok) {
+          let errText = 'Invalid credentials';
+          try {
+            const errData = await res.json();
+            errText = errData.message || ('Server error (' + res.status + ')');
+          } catch (_) {}
+          showLoginAlert('error', errText + '. Please check username/password or click 1-Click Login below.');
+          showToast(errText);
+          if (btnText) btnText.textContent = 'Sign In to Workspace';
+          return;
+        }
+
         const data = await res.json();
         if (data.status === 'success') {
+          showLoginAlert('success', 'Welcome, ' + data.user.name + '! Opening workspace...');
           currentUser = data.user;
           sessionStorage.setItem('crm_user', JSON.stringify(currentUser));
           selectedDate = getLocalTodayKey();
           isFollowingToday = true;
-          showApp();
+          setTimeout(() => {
+            showApp();
+          }, 350);
         } else {
+          showLoginAlert('error', data.message || 'Invalid username or password.');
           showToast(data.message || 'Invalid credentials');
+          if (btnText) btnText.textContent = 'Sign In to Workspace';
         }
       } catch (err) {
-        showToast('Sign-in failed: ' + err.message);
+        showLoginAlert('server', 'Server connection error: Cannot reach http://' + (window.location.host || 'localhost:3000') + '. Make sure node server is running!');
+        showToast('Connection failed: ' + err.message);
+        if (btnText) btnText.textContent = 'Sign In to Workspace';
+      }
+    }
+
+    async function switchActiveProfile(username) {
+      const passMap = {
+        'admin': 'Akshat@123#',
+        'jinendra': 'Jinendra@123',
+        'vishal': 'Vishal@123',
+        'rahul': 'Rahul@123',
+        'archana': 'Archana@123'
+      };
+      const pass = passMap[username];
+      if (!pass) return;
+      showToast('Switching profile to ' + username + '...');
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password: pass })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+          currentUser = data.user;
+          sessionStorage.setItem('crm_user', JSON.stringify(currentUser));
+          showApp();
+          showToast('Switched to ' + currentUser.name + ' (' + currentUser.role + ')');
+        }
+      } catch (e) {
+        showToast('Failed to switch profile');
       }
     }
 

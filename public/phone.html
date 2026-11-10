@@ -353,7 +353,7 @@
 
       <label>Direct Office Wi-Fi Webhook URL (Zero-Latency LAN)</label>
       <div class="copy-field" style="margin-bottom:12px;">
-        <input type="text" class="mono-input" id="lanLiveUrl" value="http://192.168.1.34:4000/api/calls/live" readonly>
+        <input type="text" class="mono-input" id="lanLiveUrl" value="http://192.168.1.34:3000/api/calls/live" readonly>
         <button class="btn-copy" onclick="copyField('lanLiveUrl')"><i class="fa-regular fa-copy"></i> Copy</button>
       </div>
 
@@ -448,7 +448,7 @@
           document.getElementById('lanLiveUrl').value = info.liveCallLanUrl;
         }
         if (info && info.ip) {
-          document.getElementById('connStatus').innerHTML = '<i class="fa-solid fa-circle" style="font-size:6px;"></i> Connected (' + info.ip + ':' + (info.port || 4000) + ')';
+          document.getElementById('connStatus').innerHTML = '<i class="fa-solid fa-circle" style="font-size:6px;"></i> Connected (' + info.ip + ':' + (info.port || 3000) + ')';
         }
       } catch (e) {}
       updateUrls();

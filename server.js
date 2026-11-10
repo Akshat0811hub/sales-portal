@@ -19,7 +19,7 @@ const path = require('path');
 const url = require('url');
 const os = require('os');
 
-const PORT = Number(process.env.PORT) || 4000;
+const PORT = Number(process.env.PORT) || 3000;
 const DATA_DIR = path.join(__dirname, 'data');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const RECORDINGS_DIR = path.join(DATA_DIR, 'recordings');

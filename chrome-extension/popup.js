@@ -15,7 +15,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const latencyVal = document.getElementById("latencyVal");
   const activeSalesVal = document.getElementById("activeSalesVal");
 
-  const DEFAULT_URL = "http://192.168.1.34:4000/api/webhook";
+  const DEFAULT_URL = "http://192.168.1.34:3000/api/webhook";
 
   toggleSettingsBtn.addEventListener("click", () => {
     const isOpen = settingsBox.classList.toggle("open");

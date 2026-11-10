@@ -10,7 +10,7 @@
 
 const FROZEN_SERVER_IP = "192.168.1.34";
 const DEFAULT_SERVER_HOST = "DESKTOP-GLVB82A";
-const PORT = 4000;
+const PORT = 3000;
 const DISCOVERY_CHANNEL = "https://ntfy.sh/sales_crm_lan_discovery_channel/json?poll=1";
 
 async function fetchBroadcastedIp() {
@@ -174,7 +174,7 @@ async function autoCatchServerUrl(preferredUrl) {
 
   return {
     success: false,
-    error: "Sales CRM Server unreachable on Port 4000. Make sure 'start-crm.bat' is running."
+    error: "Sales CRM Server unreachable on Port 3000. Make sure 'start-crm.bat' is running."
   };
 }
 
